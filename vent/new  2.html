@@ -1,0 +1,280 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+
+<head>
+	<meta content="text/html; charset=utf-8" http-equiv="Content-Type"></meta>
+  <meta content="width=device-width, initial-scale=1, minimum-scale=1" name="viewport"></meta>
+  <meta content="yes" name="apple-mobile-web-app-capable"></meta>
+  <meta content="black" name="apple-mobile-web-app-status-bar-style"></meta>
+  <link href="/jquerymobile/jquery.mobile-1.4.0.min.css" rel="stylesheet"></link>
+  <script src="/jquerymobile/jquery-1.10.2.min.js" type="text/javascript"></script>
+  <script src="/jquerymobile/custom-scripting.js" type="text/javascript"></script>
+  <script src="/jquerymobile/jquery.mobile-1.4.0.min.js" type="text/javascript"></script>
+  <script src="/js/jquery.jplayer.min.js" type="text/javascript"></script>
+	<script type="text/javascript" src="/jquerymobile/jquery-1.8.3.min.js"></script>
+  <script language="javascript" type="text/javascript" src="/js/scripts.js"></script>
+  <script language="javascript" type="text/javascript" src="/js/jquery-ui-1.9.1.custom.min.js"></script>
+  <script language="javascript" type="text/javascript" src="/js/jquery.gritter.js"></script>
+  <script language="javascript" type="text/javascript" src="/js/jWindow.js"></script>
+  <script language="javascript" type="text/javascript" src="/s2/s2.js"></script>
+  <script language="javascript" type="text/javascript" src="/s2/stick1a.js"></script>
+  <script language="javascript" type="text/javascript" src="/s2/stick1b.js"></script>
+  <script language="javascript" type="text/javascript" src="/s2/stick1c.js"></script>
+  <script language="javascript" type="text/javascript" src="/s2/smartStick1.js"></script>
+  <script language="javascript" type="text/javascript" src="/s2/cloud1c.js"></script>
+  <script language="javascript" type="text/javascript" src="/s2/level1.js"></script>
+  <title>Климат</title>
+</head>
+<body>
+<!--
+"ERROR"}, //MODE_ERROR, красный часто мигает
+																		 {1, 1000,1000,1000,1000, 255, 0, 0, "STOP"}, //MODE_STOP, красный редко мигает
+																		 {0, 0,0,0,0, 				0, 255, 0, "NORMAL"}, //MODE_NORMAL, зеленый
+																		 {0, 0,0,0,0, 				0, 0, 255, "COOLING_FAN"}, //MODE_COOLING_FAN, синий
+																		 {1, 500,500,500,500, 0, 0, 255, "COOLING_AC"}, //MODE_COOLING_AC, синий мигает
+																		 {0, 0,0,0,0, 				255, 0, 0, "HEATING"}, //MODE_HEATING, красный
+																		 {1, 500,500,500,500, 255, 0, 0, "HEATING_ADD"}, //MODE_HEATING_ADD, красный, мигает
+																		 {1, 500,500,500,500, 0, 255, 0, "FORCE_MAN"}, //MODE_FORCE_MAN, зеленый мигает
+																		 {1, 500,500,500,500, 210, 150, 0, "FORCE_Rh"}, //MODE_FORCE_Rh, желто-зеленый мигает
+																		 {1, 500,500,500,500, 0, 255, 255, "FORCE_Aq"}, //MODE_FORCE_AQ, сине-зеленый мигает
+																		 {1, 500,500,500,500, 255, 0, 255, "FORCE_Mv"}, //MODE_FORCE_Mv, фиолетовый мигает
+																		 {1, 500,500,500,500, 255, 255, 0, "FORCE_EXH"}, //MODE_FORCE_EXH, желтый мигает
+																		 <a href="#" data-role="button" data-icon="info" style="background:red; color:white;"> title </a>
+																		 Температура воздуха: 
+<script language="javascript">
+if(%ThisComputer.TempOutside%<=0){ document.write('<span style="color:#9ACDCD">'); }
+if(%ThisComputer.TempOutside%>0){ document.write('<span style="color:#FF9A9A">'); }
+</script>
+%ThisComputer.TempOutside%°C</span><br>
+-->
+
+
+<table style="text-align: middle; width: 405px;" border="0" cellpadding="0">
+	<tbody>
+		<tr>
+			<td align="center" valign="middle">
+				<table style="text-align: center; width: 405px; height 40px" border="0" cellpadding="0">
+					<tr>
+						<td align="center" valign="middle">
+						<script language="javascript">
+							switch ("%VH_Control.stateDetails%") {
+								case "ERROR": document.write('<a href="#" data-role="button" data-icon="alert" style="background:red; color:white;">ОШИБКА</a>');	break;
+								case "STOP": document.write('<a href="#" data-role="button" data-icon="info" style="background:red; color:white;">СТОП</a>');	break;
+								case "NORMAL": document.write('<a href="#" data-role="button" data-icon="info" style="background:green; color:white;">Вентиляция</a>');	break;
+								case "COOLING_FAN": document.write('<a href="#" data-role="button" data-icon="info" style="background:blue; color:white;">Охлажедение наружным воздухом</a>');	break;
+								case "COOLING_AC": document.write('<a href="#" data-role="button" data-icon="info" style="background:blue; color:white;">Охлаждение кондиционером</a>');	break;
+								case "HEATING": document.write('<a href="#" data-role="button" data-icon="info" style="background:red; color:white;">Обогрев</a>');	break;
+								case "HEATING_ADD": document.write('<a href="#" data-role="button" data-icon="info" style="background:red; color:white;">Обогрев, недостаток тепла</a>');	break;
+								case "FORCE_MAN": document.write('<a href="#" data-role="button" data-icon="info" style="background:green; color:white;">Проветривание ручное</a>');	break;
+								case "FORCE_Rh": document.write('<a href="#" data-role="button" data-icon="info" style="background:#D29600; color:white;">Проветривание, изменение влажности</a>');	break;
+								case "FORCE_Aq": document.write('<a href="#" data-role="button" data-icon="info" style="background:#00FFFF; color:white;>Проветривание, упало кач-во воздуха</a>');	break;
+								case "FORCE_Mv": document.write('<a href="#" data-role="button" data-icon="info" style="background:#FF00FF; color:white;>Проветривание, по датчику движения</a>');	break;
+								case "FORCE_EXH": document.write('<a href="#" data-role="button" data-icon="info" style="background:yellow; color:white;>Проветривание, вытяжка на кухне</a>');	break;
+								default: document.write('<a href="#" data-role="button" data-icon="alert" style="background:red; color:white;>Неизвестное состояние - %VH_Control.stateDetails%</a>');
+							}
+						</script> 
+ 					</td>
+					</tr>
+				</table>
+			</td>
+		</tr>
+		<tr>
+			<td align="center" nowrap="nowrap" valign="middle">
+				<table style="text-align: center; width: 75px;" border="0" cellpadding="0">
+					<!-- Две спальни 1*2-->
+					<td style="vertical-align: middle; text-align: center;">
+						<table style="text-align: center; width: 75px; height: 200px;" border="0" cellpadding="0">
+							<tr>
+								<td align="center" valign="middle">
+									<div style="color:#FFFFFF;background-color:#000000">_
+										<a href="/s2/grapsh.php?p=Room1_TS.temp" target="_blank">
+											<canvas id="ts1" width="75" height="55">Canvas not supported</canvas>
+										</a>
+									</div>
+									<script type="text/javascript">
+										tsRoom1 = new smartStick1('ts1', 'Room1_TS.temp', 'Детская', 30000, '°'); 
+										tsRoom1.alertmin = 22; tsRoom1.alertmax = 26;
+										tsRoom1.redraw();
+									</script>
+								</td>
+							</tr>
+							<tr>
+								<td align="center" valign="middle">
+									<div style="color:#FFFFFF;background-color:#000000">_
+										<a href="/s2/grapsh.php?p=Room2_TS.temp" target="_blank">
+											<canvas id="ts2" width="75" height="55">Canvas not supported</canvas>
+										</a>	
+									</div>
+									<script type="text/javascript">
+										tsRoom2 = new smartStick1('ts2', 'Room2_TS.temp', 'Спальня', 30000, '°'); 
+										tsRoom2.alertmin = 22; tsRoom2.alertmax = 26;
+										tsRoom2.redraw();
+									</script>
+								</td>
+							</tr>
+						</table>
+					</td>
+					<!-- Приток спален 1*1-->
+					<td style="vertical-align: middle; text-align: center;">
+						<table style="text-align: center; width: 90px; height 200px" border="0" cellpadding="0">
+							<tr>
+								<td align="center" valign="middle">
+									<div style="color:#FFFFFF;background-color:#000000">_
+										<a href="/s2/grapsh.php?p=Vent_1_TS.temp" target="_blank"> 
+											<canvas id="v01" width="90" height="200">Canvas not supported</canvas>
+										</a>
+									</div>
+									<script type="text/javascript">
+										v1 = new level1('v01', 'Vent_1_TS.temp', '(1)', 30000, ' '); 
+										v1.min = -3; v1.max = 5;
+										v1.redraw();
+									</script>
+								</td>	
+							</tr>
+						</table>
+					</td>    
+					<!-- Комната  Влажность  -->
+					<!-- Качество Аквариум 2*2-->
+					<td style="vertical-align: middle; text-align: center;">
+						<table style="text-align: center; width: 150px; height: 200px;" border="0" cellspacing="1">
+							<tr>
+								<td align="center" valign="middle">
+									<div style="color:#FFFFFF;background-color:#000000">_
+										<a href="/s2/grapsh.php?p=Room3_TS.temp" target="_blank">
+											<canvas id="ts3" width="75" height="55">Canvas not supported</canvas>
+										</a>
+									</div>
+									<script type="text/javascript">
+										tsRoom3 = new smartStick1('ts3', 'Room3_TS.temp', 'Гостинная', 30000, '°'); 
+										tsRoom3.alertmin = 22;	tsRoom3.alertmax = 26;
+										tsRoom3.redraw();
+									</script>
+								</td>
+								<td align="center" valign="middle">
+									<div style="color:#FFFFFF;background-color:#000000">_
+										<a href="/s2/grapsh_Rh.php?p=AirQuality_TS.temp" target="_blank">
+											<canvas id="aq" width="75" height="55">Canvas not supported</canvas>
+										</a>
+									</div>
+									<script type="text/javascript">
+										aq = new smartStick1('aq', 'AirQuality_TS.temp', 'Кач-во', 30000, '%'); 
+										aq.alertmin = 30;	aq.alertmax = 99;
+										aq.redraw();
+									</script>
+								</td>
+							</tr>
+							<tr>
+								<td align="center" valign="middle">
+									<div style="color:#FFFFFF;background-color:#000000">_
+										<a href="/s2/grapsh_Rh.php?p=Room3Hum_TS.temp" target="_blank">
+											<canvas id="rhs01" width="75" height="55">Canvas not supported</canvas>
+										</a>
+									</div>
+									<script type="text/javascript">
+										rhRoom3 = new smartStick1('rhs01', 'Room3Hum_TS.temp', 'Влажность', 30000, '%Rh'); 
+										rhRoom3.alertmin = 30; rhRoom3.alertmax = 80;
+										rhRoom3.redraw();
+									</script>
+								</td>
+								<td align="center" valign="middle">
+									<div style="color:#FFFFFF;background-color:#000000">_
+										<a href="/s2/grapsh.php?p=Aqua_TS.temp" target="_blank">
+											<canvas id="tsa" width="75" height="55">Canvas not supported</canvas>
+										</a>	
+									</div>
+									<script type="text/javascript">
+										tsAqua = new smartStick1('tsa', 'Aqua_TS.temp', 'Аквариум', 30000, '°'); 
+										tsAqua.alertmin = 22; tsAqua.alertmax = 26;
+										tsAqua.redraw();
+									</script>
+								</td>
+							</tr>
+						</table>
+					</td>
+					<!-- Приток гостинной 1*1-->
+					<td style="vertical-align: middle; text-align: center;">
+						<table style="text-align: center; width: 90px; height 200px" border="0" cellpadding="0">
+							<tr>
+								<td align="center" valign="middle">
+									<div style="color:#FFFFFF;background-color:#000000">_
+										<a href="/s2/grapsh.php?p=Vent_2_TS.temp" target="_blank"> 
+											<canvas id="v02" width="90" height="200">Canvas not supported</canvas>
+										</a>
+									</div>
+									<script type="text/javascript">
+										v2 = new level1('v02', 'Vent_2_TS.temp', '(2)', 30000, ' '); 
+										v2.min = -3; v2.max = 5;
+										v2.redraw();
+									</script>
+								</td>
+							</tr>
+						</table>
+					</td>    
+					<!-- Улица  			Влажность  -->
+					<!-- Кондиционер  Батарея 2*2-->
+					<td style="vertical-align: middle; text-align: center;">
+						<table style="text-align: center; width: 150px; height: 200px;" border="0" cellspacing="1">
+							<tr>
+								<td align="center" valign="middle">
+									<div style="color:#FFFFFF;background-color:#000000">_	
+										<a href="/s2/grapsh.php?p=External_TS.temp" target="_blank">
+											<canvas id="tse" width="75" height="55">Canvas not supported</canvas>
+										</a>
+									</div>
+									<script type="text/javascript">
+										tsExt = new smartStick1('tse', 'External_TS.temp', 'Улица', 30000, '°'); 
+										tsExt.alertmin = -10; tsExt.alertmax = +26;
+										tsExt.redraw();
+									</script>
+								</td>
+								<td align="center" valign="middle">
+									<div style="color:#FFFFFF;background-color:#000000">_
+										<a href="/s2/grapsh.php?p=Freon_TS.temp" target="_blank">
+											<canvas id="tsac" width="75" height="55">Canvas not supported</canvas>
+										</a>
+									</div>
+									<script type="text/javascript">
+										tsAC = new smartStick1('tsac', 'Freon_TS.temp', 'Кондиционер', 30000, '°'); 
+										tsAC.alertmin = -40;	tsAC.alertmax = +80;
+										tsAC.redraw();
+									</script>
+								</td>
+							</tr>
+							<tr>
+								<td align="center" valign="middle">
+									<div style="color:#FFFFFF;background-color:#000000">_
+										<a href="/s2/grapsh_Rh.php?p=ExternalHum_TS.temp" target="_blank">
+											<canvas id="rhe" width="75" height="55">Canvas not supported</canvas>
+										</a>	
+									</div>
+									<script type="text/javascript">
+										rhExt = new smartStick1('rhe', 'ExternalHum_TS.temp', 'Влажность', 30000, '%Rh'); 
+										rhExt.alertmin = 30;	rhExt.alertmax = 90;
+										rhExt.redraw();
+									</script>
+								</td>
+								<td align="center" valign="middle">
+									<div style="color:#FFFFFF;background-color:#000000">_
+										<a href="/s2/grapsh.php?p=HeatTransf_TS.temp" target="_blank">
+										<!<a href="/s2/grapsh.php?p=MoveCnt_TS.temp" target="_blank">
+											<canvas id="tsht" width="75" height="55">Canvas not supported</canvas>
+										</a>
+									</div>
+									<script type="text/javascript">
+										tsHT = new smartStick1('tsht', 'HeatTransf_TS.temp', 'Теплоноситель', 30000, '°'); 
+										tsHT.alertmin = 20;	tsHT.alertmax = +80;
+										tsHT.redraw();
+									</script>
+								</td>
+							</tr>
+						</table>
+					</td>
+				</table>
+			</td>
+		</tr> 
+	</tbody>
+</table>
+<br>
+</body>
+</html>

@@ -1,0 +1,562 @@
+#include <Wire.h>
+#include <Time.h>
+#include <RTClib.h>
+#include <LiquidCrystal.h>
+#include <I2C_eeprom.h>
+#include <stdio.h>
+
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+
+// ---------------------------------
+#define POOL_INT 3000	//интервал опроса датчиков
+#define REG_INT  300000	//интервал регулирования
+
+// ---------------------------------
+// Данные для вентиляторов
+
+// Структура под вентиляторы
+struct Vent{
+  uint8_t Speed;            // Текущая скорость
+  uint8_t MaxSpeed;         // Максимальная скорость - обновляется из нижнего массива по часам
+  uint8_t MaxSpeedByHour[24];  // Максимальная скорость по часам
+};
+
+#define VENT_MAX_SPEED 5
+
+Vent Vent1 = {0, 0, {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}}; // Вентилятор комнаты
+Vent Vent2 = {0, 0, {5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5}}; // Вентилятор спальни
+
+// ---------------------------------
+//адрес скорость вентилятора 1 - комната 24 байта
+const uint16_t ADR_VENT_1 = 1; 
+//адрес скорость вентилятора 2 - спальни 24 байта
+const uint16_t ADR_VENT_2 = 25; 
+
+//------------------------------------
+// Термодатчики
+// Объекты для хранения найденных датчиков, ограничимся 10шт
+#define MAX_1W_DEV_COUNT 10
+
+DeviceAddress Searching1Wire[MAX_1W_DEV_COUNT];
+int numberOfDevices;
+DeviceAddress tempDeviceAddress;
+
+#define ONE_WIRE_BUS 10
+#define TEMPERATURE_PRECISION 10
+#define TEMP_UNDEF -255
+
+// Объекты для 1-Wire термометров
+// Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
+OneWire oneWire(ONE_WIRE_BUS);
+
+// Pass our oneWire reference to Dallas Temperature. 
+DallasTemperature sensors(&oneWire);
+
+struct TempSens {
+	DeviceAddress adr;	// Адрес датчика на шине
+	uint8_t index; 			//Номер устройства на шине
+	float temp;					// Текущая температура
+	char name[5];				// Имя датчика
+};
+
+#define _T1 0
+#define _T2 1
+#define _Tk 2
+#define _Tout 3
+#define _T3 4
+#define _Ta 5
+
+TempSens	TS[6] =	{	{{}, 255, TEMP_UNDEF, "t1"}, 	// 1 Детская
+										{{}, 255, TEMP_UNDEF, "t2"},		// 2 Спальня родительская
+										{{}, 255, TEMP_UNDEF, "tk"},		// 3 Над плитой, кухня
+										{{}, 255, TEMP_UNDEF, "tout"},	// 4 Улица
+										{{}, 255, TEMP_UNDEF, "t3"},		// 5 Гостинная
+										{{}, 255, TEMP_UNDEF, "ta"}};	// 6 Аквариум
+
+const uint16_t ADR_1W_DEV = 49; // 48 байт (6 блоков по 8 байт)
+
+//------------------------------------------------------------
+// Переменные пуллинга					
+unsigned long curMillis;
+unsigned long prevMillis = 0;
+
+//------------------------------------------------------------
+// Экран
+//LiquidCrystal lcd(8, 9, 4, 5, 6, 7 );
+
+//------------------------------------------------------------
+// Часы РВ (RTC)
+RTC_DS1307 RTC;
+DateTime tmpDateTime;
+
+//------------------------------------------------------------
+// Переменные для различных целей
+String inputString = "";         // a string to hold incoming data
+boolean stringComplete = false;  // whether the string is complete 
+
+boolean isCommand, isConfig;
+
+float tmpf;
+
+//------------------------------------------------------------
+//память EEPROM
+#define EEPROM_ADR 0x50  // Address with three address pins grounded. 
+I2C_eeprom Eeprom(EEPROM_ADR);
+
+// Нажатые кнопки
+//int button;
+/*const int BUTTON_NONE   = 0;
+const int BUTTON_RIGHT  = 1;
+const int BUTTON_UP     = 2;
+const int BUTTON_DOWN   = 3;
+const int BUTTON_LEFT   = 4;
+const int BUTTON_SELECT = 5;*/
+
+void Print1WDev(){
+	//Сеть 1-wire
+  Serial.print("Found ");
+  Serial.print(numberOfDevices, DEC);
+  Serial.println(" 1-wire devices.");
+
+  Serial.print("Parasite power is: "); 
+  if (sensors.isParasitePowerMode()) Serial.println("ON");
+  else Serial.println("OFF"); 
+
+  Serial.print("Requesting temperatures...");
+  sensors.requestTemperatures(); // Send the command to get temperatures
+  Serial.println("DONE"); 
+
+  Serial.println("ID Adress           Temp  Name");
+  // Loop through each device, print out address
+  for(int i=0;i<numberOfDevices && i<MAX_1W_DEV_COUNT; i++) {
+    Serial.print(i, DEC);
+    Serial.print("  ");
+    printAddress(Searching1Wire[i]);
+    Serial.print(" ");
+		tmpf=sensors.getTempC(Searching1Wire[i]);
+		if (tmpf == DEVICE_DISCONNECTED)
+			{ Serial.print("ERR"); }
+		else
+			{ Serial.print(tmpf);
+				for (int j=0; j<6; j++) {
+					if (memcmp(TS[j].adr, Searching1Wire[i], sizeof(tempDeviceAddress))==0) { 
+						Serial.print(" "); Serial.print(TS[j].name); 
+					}
+				}
+			}
+    Serial.println();
+    }
+}
+
+//Функция прописывает температуры в структуры и сбрасывает флаг конфигурации если не все датчики нашлись
+// если датчики найдены - 
+bool Refresh1WData(){
+	sensors.requestTemperatures(); // Send the command to get temperatures
+  // Loop through each device, print out address
+	isConfig = true;
+  for(int i=0; i<6; i++) {
+		//Вытащим температуру по адресу
+		tmpf = sensors.getTempC(TS[i].adr);
+		if ( tmpf == DEVICE_DISCONNECTED) { 
+			isConfig = false; 
+			Serial.print("ERR - 1-Wire - device disconected adr=");
+			printAddress(TS[i].adr);
+			Serial.print(". Sensor name - ");
+			Serial.print(TS[i].name);
+			Serial.println();
+		}
+		TS[i].temp = tmpf;
+	}
+	return isConfig;
+}
+//Печать адреса в hex
+void printAddress(DeviceAddress deviceAddress) {
+  for (uint8_t i = 0; i < 8; i++)  {
+    if (deviceAddress[i] < 16) Serial.print("0");
+    Serial.print(deviceAddress[i], HEX);
+  }
+}
+ 
+int Search1W(){
+  //Поищем 1-wire термометры
+  sensors.begin();
+  numberOfDevices = sensors.getDeviceCount();  	
+	
+	// Loop through each device
+  for(int i=0; i<numberOfDevices && i<MAX_1W_DEV_COUNT; i++)  {
+    // Search the wire for address
+    if(sensors.getAddress(tempDeviceAddress, i)) {
+			memcpy(Searching1Wire[i], tempDeviceAddress, sizeof(tempDeviceAddress));
+			sensors.setResolution(Searching1Wire[i], TEMPERATURE_PRECISION);
+			//Проверим в датчиках неприсвоенные адреса
+			for (int j=0; j<6; j++) {
+				if (memcmp(TS[j].adr, tempDeviceAddress, sizeof(tempDeviceAddress))==0 and TS[j].index == 255) { 
+					TS[j].index = i;
+					}
+			}
+		}
+		else{
+			Serial.println();
+			Serial.print("ERR - 1-wire - found ghost device at ");
+			Serial.print(i, DEC);
+			Serial.print(" but could not detect address. Check power and cabling");
+			Serial.println();
+		}
+  } 
+	return numberOfDevices;
+}
+
+/*int getPressedButton() {
+  int buttonValue = analogRead(0); // считываем значения с аналогового входа(A0) 
+  if (buttonValue < 100) {
+    return BUTTON_RIGHT;  
+  }
+  else if (buttonValue < 200) {
+    return BUTTON_UP;
+  }
+  else if (buttonValue < 400){
+    return BUTTON_DOWN;
+  }
+  else if (buttonValue < 600){
+    return BUTTON_LEFT;
+  }
+  else if (buttonValue < 800){
+    return BUTTON_SELECT;
+  }
+  return BUTTON_NONE;
+}
+*/
+//Печать параметров в сериал с разделителем
+void PrintIntParamString(char *head, uint8_t *buf, int len, char delim, char *tail){
+ Serial.print(head);
+  char tmp_c[8];
+  for (int i = 0; i < len; i++) {
+		itoa(buf[i], tmp_c, 10);
+    Serial.print(tmp_c); 
+    if(i<len-1) Serial.print(delim);          
+    }
+  Serial.print(tail);
+  Serial.println();
+}
+
+//
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);
+  // reserve 200 bytes for the inputString:
+  inputString.reserve(200); 
+  
+  //инициализация I2C шины (мега - 20/21 uno 4/5)
+  Wire.begin();
+  
+  //Инициализация часов
+  RTC.begin();
+
+  //Дисплей 16*2
+ /* lcd.begin(16, 2);             
+  lcd.print("Hellow world !");   
+  lcd.setCursor(0, 1);             
+  lcd.print("I'm here...");  
+  delay(100); */
+
+  //Достанем настройки вентиляторов
+  Eeprom.readBlock(ADR_VENT_1, Vent1.MaxSpeedByHour, 24);
+  Eeprom.readBlock(ADR_VENT_2, Vent2.MaxSpeedByHour, 24); 
+	//Достанем настройки датчиков
+  Eeprom.readBlock(ADR_1W_DEV+ 0, TS[_T1].adr, 8);
+	Eeprom.readBlock(ADR_1W_DEV+ 8, TS[_T2].adr, 8);
+	Eeprom.readBlock(ADR_1W_DEV+16, TS[_Tk].adr, 8);
+	Eeprom.readBlock(ADR_1W_DEV+24, TS[_Tout].adr, 8);
+	Eeprom.readBlock(ADR_1W_DEV+32, TS[_T3].adr, 8);
+	Eeprom.readBlock(ADR_1W_DEV+40, TS[_Ta].adr, 8);
+
+	//Найдем все термометры
+	Search1W();
+	
+  //отчитаемся о инициализации
+  StatusToSerial();
+	
+	Refresh1WData();
+}
+ 
+
+
+void loop() {
+  int i, tmpi, tmpj, tmpk;
+	// put your main code here, to run repeatedly: 
+  curMillis = millis();
+  
+  // print the string when a newline arrives:
+  if (stringComplete) { 
+		inputString.toLowerCase();
+    inputString.trim();
+    isCommand = 0;
+    Serial.println(inputString);
+    if (inputString.equalsIgnoreCase("status")) { 
+			StatusToSerial();
+      isCommand = true;
+    }	
+		if (inputString.equalsIgnoreCase("help") or inputString.equals("?")) {
+			Serial.println("----------------Commands------------------");
+			Serial.println("all commands are case insensitive !");
+			Serial.println("date=yyyy.mm.dd - set rtc date (date=2013.12.1)");
+			Serial.println("time=hh.mi.ss - set rtc time (time=13:54:52)");
+			Serial.println("sp#=####################### - set speed profile of ventilator. sp1 and sp2. (sp1=234444333333355555555522)");
+			Serial.println("search1w (search 1w, s1w) - search one-wire devices and display result");			
+			Serial.println("print1w (print 1w, p1w) - print one-wire devices data and addresses");			
+			Serial.println("set [t1, t1, tk, tout, t3, ta]=[0...10] - associate 1-wire device to T1-sensor");
+			Serial.println("clear [t1, t1, tk, tout, t3, ta] - unassociate 1-wire device to T1-sensor");
+			isCommand = true;
+		}
+		if (inputString.startsWith("set ")) {
+			//проверим какой датчик будем привязывать
+			if (inputString.indexOf("t1")>0) { tmpi = inputString.substring(7, 9).toInt(); tmpj = _T1; }
+			if (inputString.indexOf("t2")>0) { tmpi = inputString.substring(7, 9).toInt(); tmpj = _T2; }
+			if (inputString.indexOf("tk")>0) { tmpi = inputString.substring(7, 9).toInt(); tmpj = _Tk; }
+			if (inputString.indexOf("tout")>0) { tmpi = inputString.substring(9, 11).toInt(); tmpj = _Tout; }
+			if (inputString.indexOf("t3")>0) { tmpi = inputString.substring(7, 9).toInt(); tmpj = _T3; }
+			if (inputString.indexOf("ta")>0) { tmpi = inputString.substring(7, 9).toInt(); tmpj = _Ta; }
+		
+			if ( tmpi >-1 && tmpi < numberOfDevices) {
+				for (i=0, tmpk=0; i<6; i++) {
+					if (TS[i].index == tmpi) { // датчик занят
+						Serial.print("ERR - 1-Wire - Device "); Serial.print(tmpi, DEC); Serial.print(" is already associate to \'"); Serial.print(TS[i].name); Serial.println("\'");
+						tmpk = 100;
+						break;
+					}
+				}
+				Serial.println(tmpj, DEC);
+				if ( tmpk < 100 ) {
+						memcpy(TS[tmpj].adr, Searching1Wire[tmpi], sizeof(TS[tmpj].adr));
+						TS[tmpj].index = tmpi;
+						TS[tmpj].temp = TEMP_UNDEF;
+						for(i=0; i<8; i++) Eeprom.writeByte(ADR_1W_DEV+tmpj*8+i, TS[tmpj].adr[i]);
+						Serial.print("Associate device "); printAddress(TS[tmpj].adr); Serial.print(" to \'"); ; Serial.print(TS[tmpj].name); Serial.println("\'");
+					}
+				isCommand = true;
+			} else { Serial.print("Invalid device member use 0..."); Serial.println(numberOfDevices-1, DEC); }
+      isCommand = true;
+		}
+		if (inputString.startsWith("clear ")) {
+			//проверим какой датчик будем отвязывать
+			if (inputString.indexOf("t1")>0) { tmpi = inputString.substring(9, 11).toInt(); tmpj = _T1; }
+			if (inputString.indexOf("t2")>0) { tmpi = inputString.substring(9, 11).toInt(); tmpj = _T2; }
+			if (inputString.indexOf("tk")>0) { tmpi = inputString.substring(9, 11).toInt(); tmpj = _Tk; }
+			if (inputString.indexOf("tout")>0) { tmpi = inputString.substring(11, 13).toInt(); tmpj = _Tout; }
+			if (inputString.indexOf("t3")>0) { tmpi = inputString.substring(9, 11).toInt(); tmpj = _T3; }
+			if (inputString.indexOf("ta")>0) { tmpi = inputString.substring(9, 11).toInt(); tmpj = _Ta; }
+		
+			if ( tmpi >-1 && tmpi < numberOfDevices) {
+				Serial.print("Clearing associate device "); printAddress(TS[tmpj].adr); Serial.print(" to \'"); ; Serial.print(TS[tmpj].name); Serial.println("\'");
+				memset(TS[tmpj].adr, 0, sizeof(TS[tmpj].adr));
+				TS[tmpj].index = 255;
+				TS[tmpj].temp = TEMP_UNDEF;
+				for(i=0; i<8; i++) Eeprom.writeByte(ADR_1W_DEV+tmpj*8+i, 0);
+				}	else { Serial.print("Invalid device member use 0..."); Serial.println(numberOfDevices-1, DEC); }
+      isCommand = true;
+		}
+		if (inputString.equalsIgnoreCase("search1w") or inputString.equalsIgnoreCase("search 1w") or inputString.equalsIgnoreCase("s1w")) {
+			Search1W();
+			Print1WDev();
+			isCommand = true;
+		}
+		if (inputString.equalsIgnoreCase("print1w") or inputString.equalsIgnoreCase("print 1w") or inputString.equalsIgnoreCase("p1w")) {
+			Print1WDev();
+			isCommand = true;
+		}
+    if (inputString.startsWith("date=")) { 
+			//date=yyyy.mm.dd
+      if( inputString.substring(5,   9).toInt() && 
+          inputString.substring(10, 12).toInt() && (inputString.substring(10, 12).toInt() < 13) &&
+          inputString.substring(13, 15).toInt() && (inputString.substring(13, 15).toInt() < 31)
+        ){ 
+				tmpDateTime = RTC.now();
+        RTC.adjust(DateTime(inputString.substring(5, 9).toInt(), 
+                            inputString.substring(10, 12).toInt(),
+                            inputString.substring(13, 15).toInt(), 
+                            tmpDateTime.hour(),tmpDateTime.minute(),tmpDateTime.second()
+                            )); 
+      }
+        else { Serial.println("Invalid date format (use yyyy.mm.dd)"); }
+        isCommand = true;
+    }
+    if (inputString.startsWith("time=")){
+			//time=hh.mi.ss
+      if( inputString.substring(5,  7).toInt() && (inputString.substring(5,  7).toInt() < 25) &&
+          inputString.substring(8, 10).toInt() && (inputString.substring(8, 10).toInt() < 60) &&
+          inputString.substring(11,12).toInt() && (inputString.substring(11,12).toInt() < 60)
+        ){ 
+				tmpDateTime = RTC.now();
+        RTC.adjust(DateTime(tmpDateTime.year(), tmpDateTime.month(), tmpDateTime.day(), 
+                            inputString.substring(5,  7).toInt(),
+                            inputString.substring(8, 10).toInt(),
+                            inputString.substring(11,12).toInt()
+                            )); 
+      }
+        else { Serial.println("Invalid time format (use hh24.mi.ss)"); }
+        isCommand = true;
+    }
+    if (inputString.startsWith("sp1=") or inputString.startsWith("sp2=")) { 
+			//spx=234444333333355555555522
+      if( inputString.length() == 28 ){ 
+        for (i = 4; i < 28; i++){ 
+					if ( inputString.substring(i, i+1).toInt() < 0 || inputString.substring(i, i+1).toInt() > VENT_MAX_SPEED ) {
+						Serial.println("Invalid speed profile - valid value 0...5"); 
+            i = 100;
+            break;
+          }
+        }
+        if ( i < 100 ) { 
+				  if ( inputString.substring(2, 3).equals("1") ){
+					  for (i = 4; i < 28; i++){ 
+							Vent1.MaxSpeedByHour[i-4] = (uint8_t)(inputString.substring(i, i+1).toInt()); 
+							Eeprom.writeByte(ADR_VENT_1+i-4, Vent1.MaxSpeedByHour[i-4]);
+						}
+					}
+					if ( inputString.substring(2, 3).equals("2") ){
+						for (i = 4; i < 28; i++){ 
+							Vent2.MaxSpeedByHour[i-4] = (uint8_t)(inputString.substring(i, i+1).toInt());
+							Eeprom.writeByte(ADR_VENT_2+i-4, Vent2.MaxSpeedByHour[i-4]);
+						}
+					}                   
+				}                          
+			}
+    else { Serial.println("Invalid speed profile - use \"sp#=########################\" - 24 speed value / 24 hour"); }
+    isCommand = true;
+  }
+      
+  if (!isCommand) { Serial.println("Invalid command");  }
+    
+  // clear the string:
+  inputString = "";
+  stringComplete = false;
+} 
+  
+  if(curMillis - prevMillis > POOL_INT){ 
+		prevMillis = curMillis;
+    tmpDateTime = RTC.now();  
+
+    //Обновим максимальные скорости
+    Vent1.MaxSpeed = Vent1.MaxSpeedByHour[tmpDateTime.hour()];
+    Vent2.MaxSpeed = Vent2.MaxSpeedByHour[tmpDateTime.hour()];
+    //Обновим температуры 
+		Refresh1WData();
+	
+/*        val = analogRead(A1);
+        Serial.print(tmpDateTime.year(), DEC);
+        Serial.print('.');
+        Serial.print(tmpDateTime.month(), DEC);
+        Serial.print('.');
+        Serial.print(tmpDateTime.day(), DEC);
+        Serial.print(' ');
+        Serial.print(tmpDateTime.hour(), DEC);
+        Serial.print(':');
+        Serial.print(tmpDateTime.minute(), DEC);
+        Serial.print(':');
+        Serial.print(tmpDateTime.second(), DEC);
+        Serial.print("; ");
+        Serial.print(val);
+        Serial.println();*/
+     /* lcd.setCursor(0, 0);
+      lcd.print("                ");
+      lcd.print(val); 
+      for(int i = 0; i < round(val/64) ; i < 16)
+        { lcd.setCursor(i, 1);
+          lcd.print("#");
+        }*/
+  }
+}
+
+/*
+  SerialEvent occurs whenever a new data comes in the
+ hardware serial RX.  This routine is run between each
+ time loop() runs, so using delay inside loop can delay
+ response.  Multiple bytes of data may be available.
+ */
+void serialEvent() {
+  while (Serial.available()) {
+    // get the new byte:
+    char inChar = (char)Serial.read(); 
+    // add it to the inputString:
+    inputString += inChar;
+    // if the incoming character is a newline, set a flag
+    // so the main loop can do something about it:
+    if (inChar == '\n') {
+      stringComplete = true;
+    } 
+  }
+} 
+
+void StatusToSerial()
+{	Serial.println("------------System status------------");
+	//Время
+  if (RTC.isrunning()){ 
+		// Определяем время
+    tmpDateTime = RTC.now();
+    // Выводим время в монитор порта
+    Serial.print("TIME: ");
+    Serial.print(tmpDateTime.year(), DEC);
+    Serial.print('/');
+    Serial.print(tmpDateTime.month(), DEC);
+    Serial.print('/');
+    Serial.print(tmpDateTime.day(), DEC);
+    Serial.print(' ');
+    Serial.print(tmpDateTime.hour(), DEC);
+    Serial.print(':');
+    Serial.print(tmpDateTime.minute(), DEC);
+    Serial.print(':');
+    Serial.print(tmpDateTime.second(), DEC);
+    Serial.println();
+    }
+    else
+			Serial.println("ERR - TIME - RTC is not runing. Check battery, set real date/time.");
+	  
+  Print1WDev();
+
+		
+	//Параметры скорости вентиляторов по времени
+  unsigned char i;
+   
+  Serial.print("Vent 1");
+  Serial.println();
+  PrintIntParamString("Speed profile=", Vent1.MaxSpeedByHour, 24, '.', "");
+  Serial.print("Speed (current/maximum) ="); 
+  Serial.print(Vent1.Speed, DEC);
+  Serial.print("/"); 
+  Serial.print(Vent1.MaxSpeed, DEC);
+  Serial.println();
+  Serial.print("Vent 2");
+  Serial.println();
+  PrintIntParamString("Speed profile=", Vent2.MaxSpeedByHour, 24, '.', "");
+  Serial.print("Speed (current/maximum) ="); 
+  Serial.print(Vent2.Speed, DEC);
+  Serial.print("/"); 
+  Serial.print(Vent2.MaxSpeed, DEC);
+  Serial.println();   
+     
+}
+
+
+
+/*
+float round(float x)
+{
+        float t;
+
+        if (!isfinite(x))
+                return (x);
+
+        if (x >= 0.0) {
+                t = floor(x);
+                if (t - x <= -0.5)
+                        t += 1.0;
+                return (t);
+        } else {
+                t = floor(-x);
+                if (t + x <= -0.5)
+                        t += 1.0;
+                return (-t);
+        }
+}*/
